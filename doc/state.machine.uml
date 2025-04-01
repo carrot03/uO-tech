@@ -1,0 +1,5 @@
+@startuml
+hide mepty description
+
+Alice -> Bob: test
+@enduml
