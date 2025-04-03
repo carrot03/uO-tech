@@ -17,5 +17,5 @@ We agreed on using NextJs for building the back-end
 we chose these stacks because the team is pretty familiair with the tools.
 
 ## Consequences
-
+Faster implementation
 
