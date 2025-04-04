@@ -6,6 +6,15 @@ import { Area, AreaChart, CartesianGrid, Legend, Line, LineChart, ResponsiveCont
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import mqtt from "mqtt"
+
+// Define types for hardware data
+type HardwareData = {
+  time: string;
+  voltage: number;
+  current: number;
+  temperature: number;
+}
 
 // Generate mock data for the bandwidth chart
 const generateBandwidthData = () => {
@@ -27,65 +36,57 @@ const generateBandwidthData = () => {
   return data
 }
 
-// Generate mock data for hardware metrics
-const generateHardwareData = () => {
-  const data = []
-  const now = new Date()
-
-  for (let i = 30; i >= 0; i--) {
-    const time = new Date(now.getTime() - i * 60000) // 1 minute intervals
-
-    // Generate realistic values with small variations
-    const voltage = Number.parseFloat((12 + Math.random() * 0.4 - 0.2).toFixed(2)) // Around 12V
-    const current = Number.parseFloat((0.8 + Math.random() * 0.3).toFixed(2)) // 0.8-1.1A
-    const temperature = Number.parseFloat((42 + Math.random() * 5 - 2).toFixed(1)) // 40-47°C
-
-    data.push({
-      time: time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      voltage,
-      current,
-      temperature,
-    })
-  }
-
-  return data
-}
-
 export function SystemMetrics() {
   const [bandwidthData, setBandwidthData] = useState(generateBandwidthData())
-  const [hardwareData, setHardwareData] = useState(generateHardwareData())
+  const [hardwareData, setHardwareData] = useState<HardwareData[]>([])
 
-  // Update data every minute
   useEffect(() => {
-    const interval = setInterval(() => {
-      const now = new Date()
-      const timeString = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    // MQTT Client setup
+    const client = mqtt.connect("ws://your-mqtt-broker-url:port") // Change the URL as needed
+    const topic = "metrics/topic"
 
-      // Update bandwidth data
-      setBandwidthData((prev) => {
-        const newData = [...prev.slice(1)]
-        newData.push({
-          time: timeString,
-          download: Number.parseFloat((230 + Math.random() * 30).toFixed(1)),
-          upload: Number.parseFloat((15 + Math.random() * 5).toFixed(1)),
-        })
-        return newData
+    client.on("connect", () => {
+      console.log("Connected to MQTT broker")
+      client.subscribe(topic, (err) => {
+        if (err) {
+          console.error("Failed to subscribe to topic:", err)
+        }
       })
+    })
 
-      // Update hardware data
-      setHardwareData((prev) => {
-        const newData = [...prev.slice(1)]
-        newData.push({
-          time: timeString,
-          voltage: Number.parseFloat((12 + Math.random() * 0.4 - 0.2).toFixed(2)),
-          current: Number.parseFloat((0.8 + Math.random() * 0.3).toFixed(2)),
-          temperature: Number.parseFloat((42 + Math.random() * 5 - 2).toFixed(1)),
+    client.on("message", (topic, message) => {
+      const payload = JSON.parse(message.toString())
+
+      // Process the received payload to update metrics
+      if (payload.type === "bandwidth") {
+        const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+        setBandwidthData((prev) => {
+          const newData = [...prev.slice(1)]
+          newData.push({
+            time,
+            download: payload.download,
+            upload: payload.upload,
+          })
+          return newData
         })
-        return newData
-      })
-    }, 60000) // Update every minute
+      } else if (payload.type === "hardware") {
+        const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+        setHardwareData((prev) => {
+          const newData = [...prev.slice(1)]
+          newData.push({
+            time,
+            voltage: payload.voltage,
+            current: payload.current,
+            temperature: payload.temperature,
+          })
+          return newData
+        })
+      }
+    })
 
-    return () => clearInterval(interval)
+    return () => {
+      client.end()
+    }
   }, [])
 
   // Get the latest hardware values
@@ -100,7 +101,7 @@ export function SystemMetrics() {
             <CardTitle className="text-sm font-medium">Voltage</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{latestHardware.voltage} V</div>
+            <div className="text-2xl font-bold">{latestHardware?.voltage} V</div>
             <p className="text-xs text-muted-foreground">Power supply voltage</p>
           </CardContent>
         </Card>
@@ -109,7 +110,7 @@ export function SystemMetrics() {
             <CardTitle className="text-sm font-medium">Current</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{latestHardware.current} A</div>
+            <div className="text-2xl font-bold">{latestHardware?.current} A</div>
             <p className="text-xs text-muted-foreground">Power consumption</p>
           </CardContent>
         </Card>
@@ -118,7 +119,7 @@ export function SystemMetrics() {
             <CardTitle className="text-sm font-medium">Temperature</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{latestHardware.temperature} °C</div>
+            <div className="text-2xl font-bold">{latestHardware?.temperature} °C</div>
             <p className="text-xs text-muted-foreground">Internal temperature</p>
           </CardContent>
         </Card>
@@ -221,48 +222,39 @@ export function SystemMetrics() {
                 className="h-full w-full"
               >
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart
-                    data={hardwareData}
-                    margin={{
-                      top: 10,
-                      right: 30,
-                      left: 10,
-                      bottom: 30,
-                    }}
-                  >
+                  <LineChart data={hardwareData} margin={{ top: 10, right: 10, left: 10, bottom: 30 }}>
                     <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
                     <XAxis dataKey="time" tick={{ fontSize: 12 }} tickMargin={10} />
                     <YAxis
-                      yAxisId="left"
-                      tick={{ fontSize: 12 }}
-                      domain={[11, 13]}
                       label={{
-                        value: "Voltage",
+                        value: "Units",
                         angle: -90,
                         position: "insideLeft",
                         style: { textAnchor: "middle" },
                         offset: -5,
                       }}
-                    />
-                    <YAxis
-                      yAxisId="right"
-                      orientation="right"
                       tick={{ fontSize: 12 }}
-                      domain={[0, 2]}
-                      label={{
-                        value: "Current",
-                        angle: 90,
-                        position: "insideRight",
-                        style: { textAnchor: "middle" },
-                        offset: 5,
-                      }}
                     />
-                    <YAxis yAxisId="temp" orientation="right" tick={{ fontSize: 12 }} domain={[30, 60]} hide />
                     <ChartTooltip content={<ChartTooltipContent />} />
                     <Legend wrapperStyle={{ paddingTop: 10, bottom: 0 }} />
-                    <Line yAxisId="left" type="monotone" dataKey="voltage" stroke="hsl(210, 100%, 50%)" dot={false} />
-                    <Line yAxisId="right" type="monotone" dataKey="current" stroke="hsl(210, 100%, 70%)" dot={false} />
-                    <Line yAxisId="temp" type="monotone" dataKey="temperature" stroke="hsl(0, 100%, 65%)" dot={false} />
+                    <Line
+                      type="monotone"
+                      dataKey="voltage"
+                      stroke="hsl(210, 100%, 50%)"
+                      dot={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="current"
+                      stroke="hsl(210, 100%, 70%)"
+                      dot={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="temperature"
+                      stroke="hsl(0, 100%, 65%)"
+                      dot={false}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </ChartContainer>
@@ -273,4 +265,3 @@ export function SystemMetrics() {
     </div>
   )
 }
-

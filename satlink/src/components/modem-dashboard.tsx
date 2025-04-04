@@ -10,6 +10,7 @@ import { ConnectionQuality } from "@/components/connection-quality"
 import { DevicesList } from "@/components/devices-list"
 import { ModemStats } from "@/components/modem-stats"
 import { DataUsage } from "@/components/data-usage"
+import mqtt from 'mqtt';
 
 // Mock data - in a real app, this would come from an API
 const mockModemData = {
@@ -20,10 +21,10 @@ const mockModemData = {
   macAddress: "00:1A:2B:3C:4D:5E",
   model: "Netgear CM1000",
   firmwareVersion: "V1.3.1.0",
-  downloadSpeed: 235.6, // Mbps
-  uploadSpeed: 15.2, // Mbps
-  pingLatency: 18, // ms
-  signalStrength: 92, // percentage
+  downloadSpeed: 235.6, 
+  uploadSpeed: 15.2, 
+  pingLatency: 18, 
+  signalStrength: 92, 
   connectedDevices: 7,
 }
 
@@ -31,29 +32,42 @@ export default function ModemDashboard() {
   const [modemData, setModemData] = useState(mockModemData)
   const [loading, setLoading] = useState(true)
 
-  // Simulate fetching data
+  // Set up the MQTT client and subscribe to the topic
   useEffect(() => {
-    const fetchData = () => {
-      // In a real app, this would be an API call
-      setLoading(true)
-      setTimeout(() => {
-        // Simulate small changes in the data to make it look "live"
-        setModemData((prev) => ({
-          ...prev,
-          downloadSpeed: +(prev.downloadSpeed + (Math.random() * 10 - 5)).toFixed(1),
-          uploadSpeed: +(prev.uploadSpeed + (Math.random() * 2 - 1)).toFixed(1),
-          pingLatency: Math.max(5, Math.min(100, Math.floor(prev.pingLatency + (Math.random() * 6 - 3)))),
-          signalStrength: Math.max(60, Math.min(100, Math.floor(prev.signalStrength + (Math.random() * 4 - 2)))),
-        }))
-        setLoading(false)
-      }, 1000)
-    }
+    // Connect to MQTT broker
+    const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
 
-    fetchData()
-    const interval = setInterval(fetchData, 5000) // Update every 5 seconds
+    // Handle connection
+    client.on('connect', () => {
+      console.log('Connected to MQTT broker');
+      client.subscribe('test/topic', (err) => {
+        if (!err) {
+          console.log('Subscribed to test/topic');
+        } else {
+          console.log('Error subscribing: ', err);
+        }
+      });
+    });
 
-    return () => clearInterval(interval)
-  }, [])
+    // Handle incoming messages and update modemData
+    client.on('message', (topic, message) => {
+      const data = JSON.parse(message.toString());
+
+      setModemData(prevData => ({
+        ...prevData,
+        downloadSpeed: data.downloadSpeed || prevData.downloadSpeed,
+        uploadSpeed: data.uploadSpeed || prevData.uploadSpeed,
+        pingLatency: data.pingLatency || prevData.pingLatency,
+        signalStrength: data.signalStrength || prevData.signalStrength,
+        connectedDevices: data.connectedDevices || prevData.connectedDevices
+      }));
+    });
+
+    // Clean up on component unmount
+    return () => {
+      client.end();
+    };
+  }, []); // The empty array ensures this effect runs only once on mount
 
   return (
     <div className="space-y-6">
@@ -144,4 +158,3 @@ export default function ModemDashboard() {
     </div>
   )
 }
-

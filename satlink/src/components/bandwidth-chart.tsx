@@ -1,12 +1,12 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import mqtt from "mqtt"
 import { Area, AreaChart, CartesianGrid, Legend, ResponsiveContainer, XAxis, YAxis } from "recharts"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 
-// Generate mock data for the bandwidth chart
 const generateMockData = () => {
   const data = []
   const now = new Date()
@@ -29,23 +29,54 @@ const generateMockData = () => {
 export function BandwidthChart() {
   const [data, setData] = useState(generateMockData())
 
-  // Update data every minute
   useEffect(() => {
-    const interval = setInterval(() => {
-      const newData = [...data.slice(1)]
-      const now = new Date()
+    // Connect to MQTT broker
+    const client = mqtt.connect("wss://broker.emqx.io:8084/mqtt")
 
-      newData.push({
-        time: now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        download: Number.parseFloat((230 + Math.random() * 30).toFixed(1)),
-        upload: Number.parseFloat((15 + Math.random() * 5).toFixed(1)),
-      })
+    // Topics for bandwidth data
+    const topics = ["bandwidth/download", "bandwidth/upload"]
 
-      setData(newData)
-    }, 60000) // Update every minute
+    // Subscribe to topics
+    client.on("connect", () => {
+      topics.forEach(topic => client.subscribe(topic))
+    })
 
-    return () => clearInterval(interval)
-  }, [data])
+    // Handle incoming MQTT messages
+    client.on("message", (topic, message) => {
+      const parsedMessage = JSON.parse(message.toString())
+
+      if (topic === "bandwidth/download") {
+        setData(prevData => {
+          const newData = [...prevData.slice(1)]
+          const now = new Date()
+          newData.push({
+            time: now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            download: Number.parseFloat(parsedMessage.value.toFixed(1)),
+            upload: prevData[prevData.length - 1]?.upload || 0, 
+          })
+          return newData
+        })
+      }
+
+      if (topic === "bandwidth/upload") {
+        setData(prevData => {
+          const newData = [...prevData.slice(1)]
+          const now = new Date()
+          newData.push({
+            time: now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            download: prevData[prevData.length - 1]?.download || 0, 
+            upload: Number.parseFloat(parsedMessage.value.toFixed(1)),
+          })
+          return newData
+        })
+      }
+    })
+
+    // Cleanup MQTT client when the component is unmounted
+    return () => {
+      client.end()
+    }
+  }, [])
 
   return (
     <Card className="col-span-4">
@@ -112,4 +143,3 @@ export function BandwidthChart() {
     </Card>
   )
 }
-

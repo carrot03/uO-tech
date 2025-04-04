@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useState } from "react"
+import { useCallback, useState, useEffect } from "react"
+import mqtt from "mqtt"
 import { Wifi, RefreshCw } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -8,24 +9,64 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 
 interface ModemStatsProps {
-  data: {
-    status: string
-    uptime: string
-    ipAddress: string
-    connection: string
-    macAddress: string
-    model: string
-    firmwareVersion: string
-    pingLatency?: number
-    signalStrength?: number
-    connectedDevices?: number
-  }
   loading: boolean
   onRefresh?: () => void
 }
 
-export function ModemStats({ data, loading, onRefresh }: ModemStatsProps) {
+export function ModemStats({ loading, onRefresh }: ModemStatsProps) {
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [data, setData] = useState({
+    status: "offline",
+    uptime: "0d 0h 0m",
+    ipAddress: "0.0.0.0",
+    connection: "Disconnected",
+    macAddress: "00:00:00:00:00:00",
+    model: "N/A",
+    firmwareVersion: "N/A",
+    pingLatency: 0,
+    signalStrength: 0,
+    connectedDevices: 0,
+  })
+
+  useEffect(() => {
+    // Connect to MQTT broker
+    const client = mqtt.connect("ws://your-mqtt-broker-url:port")
+
+    // Subscribe to a single topic for all modem stats
+    const topic = "modem/stats"
+
+    // Subscribe to the topic
+    client.on("connect", () => {
+      client.subscribe(topic)
+    })
+
+    // Handle incoming MQTT messages
+    client.on("message", (topic, message) => {
+      if (topic === "modem/stats") {
+        // Parse the received message and update the state
+        const parsedMessage = JSON.parse(message.toString())
+
+        setData(prevData => ({
+          ...prevData,
+          status: parsedMessage.status || prevData.status,
+          uptime: parsedMessage.uptime || prevData.uptime,
+          ipAddress: parsedMessage.ipAddress || prevData.ipAddress,
+          connection: parsedMessage.connection || prevData.connection,
+          macAddress: parsedMessage.macAddress || prevData.macAddress,
+          model: parsedMessage.model || prevData.model,
+          firmwareVersion: parsedMessage.firmwareVersion || prevData.firmwareVersion,
+          pingLatency: parsedMessage.pingLatency || prevData.pingLatency,
+          signalStrength: parsedMessage.signalStrength || prevData.signalStrength,
+          connectedDevices: parsedMessage.connectedDevices || prevData.connectedDevices,
+        }))
+      }
+    })
+
+    // Cleanup MQTT client when the component is unmounted
+    return () => {
+      client.end()
+    }
+  }, [])
 
   const handleRefresh = useCallback(() => {
     if (onRefresh) {
@@ -103,4 +144,3 @@ export function ModemStats({ data, loading, onRefresh }: ModemStatsProps) {
     </Card>
   )
 }
-

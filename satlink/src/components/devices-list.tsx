@@ -1,13 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Laptop, Smartphone, Tv, Watch, Wifi } from "lucide-react"
-
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
+import mqtt from 'mqtt'
 
-// Mock data for connected devices
+// Mock data for connected devices (initially)
 const mockDevices = [
   {
     id: 1,
@@ -86,7 +86,7 @@ interface DevicesListProps {
 }
 
 export function DevicesList({ connectedDevices }: DevicesListProps) {
-  const [devices] = useState(mockDevices)
+  const [devices, setDevices] = useState(mockDevices)
   const [filter, setFilter] = useState<"all" | "connected" | "disconnected">("all")
 
   const getDeviceIcon = (type: string) => {
@@ -104,6 +104,40 @@ export function DevicesList({ connectedDevices }: DevicesListProps) {
     }
   }
 
+  // Set up MQTT client and subscribe to device updates
+  useEffect(() => {
+    const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt')
+
+    client.on('connect', () => {
+      console.log('Connected to MQTT broker')
+      client.subscribe('devices/topic', (err) => {
+        if (!err) {
+          console.log('Subscribed to devices/topic')
+        } else {
+          console.log('Error subscribing: ', err)
+        }
+      })
+    })
+
+    // Handle incoming MQTT messages to update devices data
+    client.on('message', (topic, message) => {
+      const updatedDevice = JSON.parse(message.toString())
+      setDevices(prevDevices =>
+        prevDevices.map(device =>
+          device.id === updatedDevice.id
+            ? { ...device, ...updatedDevice }
+            : device
+        )
+      )
+    })
+
+    // Clean up on component unmount
+    return () => {
+      client.end()
+    }
+  }, [])
+
+  // Filter devices based on connection status
   const filteredDevices = devices.filter((device) => {
     if (filter === "all") return true
     if (filter === "connected") return device.connected
@@ -181,4 +215,3 @@ export function DevicesList({ connectedDevices }: DevicesListProps) {
     </Card>
   )
 }
-
