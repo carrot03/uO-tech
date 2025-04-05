@@ -4,11 +4,18 @@ import { useEffect, useState } from "react"
 import mqtt from "mqtt"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
+import config from '../../config';
 
 // Interface to define the expected data structure
 interface ConnectionQualityProps {
   signalStrength: number
   pingLatency: number
+}
+
+
+const brokerUrl = config.mqttBroker;
+if (typeof brokerUrl !== 'string' || brokerUrl.trim() === '') {
+  throw new Error("Missing or invalid MQTT broker URL");
 }
 
 export function ConnectionQuality() {
@@ -17,7 +24,7 @@ export function ConnectionQuality() {
 
   useEffect(() => {
     // Connect to MQTT broker
-    const client = mqtt.connect("ws://your-mqtt-broker-url:port")
+    const client = mqtt.connect(brokerUrl)
 
     // MQTT topics to subscribe to
     const topics = ["connection/signalStrength", "connection/pingLatency"]

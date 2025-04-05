@@ -7,6 +7,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import mqtt from "mqtt"
+import config from '../../config';
+import { useHWModem } from "@/hooks/useHWModem";
+
 
 // Define types for hardware data
 type HardwareData = {
@@ -36,13 +39,20 @@ const generateBandwidthData = () => {
   return data
 }
 
+const brokerUrl = config.mqttBroker;
+
+if (typeof brokerUrl === 'undefined' || brokerUrl.trim() === '') {
+  throw new Error("Missing or invalid MQTT broker URL " + brokerUrl);
+}
+
 export function SystemMetrics() {
   const [bandwidthData, setBandwidthData] = useState(generateBandwidthData())
   const [hardwareData, setHardwareData] = useState<HardwareData[]>([])
+  const { hwInfo, error } = useHWModem();
 
   useEffect(() => {
     // MQTT Client setup
-    const client = mqtt.connect("ws://your-mqtt-broker-url:port") // Change the URL as needed
+    const client = mqtt.connect(brokerUrl)
     const topic = "metrics/topic"
 
     client.on("connect", () => {

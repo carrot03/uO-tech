@@ -1,86 +1,66 @@
 "use client"
 
-import { useCallback, useState, useEffect } from "react"
-import mqtt from "mqtt"
-import { Wifi, RefreshCw } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useCallback, useState } from "react"
+import { Wifi, RefreshCw, Satellite } from "lucide-react"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
+import { useModemConstellation } from "../hooks/useModemConstellation"
+import { useModemFirmwareVersion } from "../hooks/useModemFirmwareVersion"
 
 interface ModemStatsProps {
+  data: {
+    status: string
+    uptime: string
+    ipAddress: string
+    macAddress: string
+    model: string
+    firmwareVersion: string
+    downloadSpeed?: number
+    uploadSpeed?: number
+    pingLatency?: number
+    signalStrength?: number
+    connectedDevices?: number
+  }
   loading: boolean
   onRefresh?: () => void
 }
 
-export function ModemStats({ loading, onRefresh }: ModemStatsProps) {
+export function ModemStats({ data, loading, onRefresh }: ModemStatsProps) {
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [data, setData] = useState({
-    status: "offline",
-    uptime: "0d 0h 0m",
-    ipAddress: "0.0.0.0",
-    connection: "Disconnected",
-    macAddress: "00:00:00:00:00:00",
-    model: "N/A",
-    firmwareVersion: "N/A",
-    pingLatency: 0,
-    signalStrength: 0,
-    connectedDevices: 0,
-  })
+  const {
+    data: constellation,
+    loading: constellationLoading,
+    refresh: refreshConstellation,
+  } = useModemConstellation()
 
-  useEffect(() => {
-    // Connect to MQTT broker
-    const client = mqtt.connect("ws://your-mqtt-broker-url:port")
+  const {
+    data: firmware,
+    loading: firmwareLoading,
+    refresh: refreshFirmwareVersion,
+  } = useModemFirmwareVersion()
 
-    // Subscribe to a single topic for all modem stats
-    const topic = "modem/stats"
-
-    // Subscribe to the topic
-    client.on("connect", () => {
-      client.subscribe(topic)
-    })
-
-    // Handle incoming MQTT messages
-    client.on("message", (topic, message) => {
-      if (topic === "modem/stats") {
-        // Parse the received message and update the state
-        const parsedMessage = JSON.parse(message.toString())
-
-        setData(prevData => ({
-          ...prevData,
-          status: parsedMessage.status || prevData.status,
-          uptime: parsedMessage.uptime || prevData.uptime,
-          ipAddress: parsedMessage.ipAddress || prevData.ipAddress,
-          connection: parsedMessage.connection || prevData.connection,
-          macAddress: parsedMessage.macAddress || prevData.macAddress,
-          model: parsedMessage.model || prevData.model,
-          firmwareVersion: parsedMessage.firmwareVersion || prevData.firmwareVersion,
-          pingLatency: parsedMessage.pingLatency || prevData.pingLatency,
-          signalStrength: parsedMessage.signalStrength || prevData.signalStrength,
-          connectedDevices: parsedMessage.connectedDevices || prevData.connectedDevices,
-        }))
-      }
-    })
-
-    // Cleanup MQTT client when the component is unmounted
-    return () => {
-      client.end()
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        onRefresh?.(), // Optional chaining in case it's undefined
+        refreshConstellation(),
+        refreshFirmwareVersion()
+      ]);
+    } catch (error) {
+      console.error("Refresh failed:", error);
+    } finally {
+      setIsRefreshing(false);
     }
-  }, [])
-
-  const handleRefresh = useCallback(() => {
-    if (onRefresh) {
-      setIsRefreshing(true)
-
-      // Call the refresh function
-      onRefresh()
-
-      // Reset the refreshing state after 1 second to show the animation
-      setTimeout(() => {
-        setIsRefreshing(false)
-      }, 1000)
-    }
-  }, [onRefresh])
+  }, [onRefresh, refreshConstellation, refreshFirmwareVersion]);
 
   return (
     <Card>
@@ -105,39 +85,61 @@ export function ModemStats({ loading, onRefresh }: ModemStatsProps) {
       </CardHeader>
       <CardContent className="grid gap-6">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+
+          {/* Constellation data */}
           <div className="space-y-2">
-            <div className="text-sm font-medium text-muted-foreground">Status</div>
-            {loading ? (
-              <Skeleton className="h-6 w-20" />
+            <div className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+              <Satellite className="h-4 w-4" /> Constellation
+            </div>
+            {constellationLoading ? (
+              <Skeleton className="h-6 w-full" />
             ) : (
-              <Badge variant={data.status === "online" ? "default" : "destructive"} className="capitalize">
-                {data.status}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant={constellation?.constellation_visible ? "default" : "destructive"}>
+                  {constellation?.constellation_visible ? "Visible" : "Not Visible"}
+                </Badge>
+              </div>
             )}
           </div>
+
+          {/* Uptime */}
           <div className="space-y-2">
             <div className="text-sm font-medium text-muted-foreground">Uptime</div>
-            <div className="text-sm">{data.uptime}</div>
+            {loading ? (
+              <Skeleton className="h-6 w-32" />
+            ) : (
+              <div className="text-sm">{data.uptime}</div>
+            )}
           </div>
+
+          {/* IP Address */}
           <div className="space-y-2">
             <div className="text-sm font-medium text-muted-foreground">IP Address</div>
-            {loading ? <Skeleton className="h-6 w-32" /> : <div className="text-sm">{data.ipAddress}</div>}
+            <div className="text-sm">10.1.1.252</div>
           </div>
-          <div className="space-y-2">
-            <div className="text-sm font-medium text-muted-foreground">Connection</div>
-            {loading ? <Skeleton className="h-6 w-32" /> : <div className="text-sm">{data.connection}</div>}
-          </div>
+
+          {/* MAC Address
           <div className="space-y-2">
             <div className="text-sm font-medium text-muted-foreground">MAC Address</div>
             <div className="text-sm">{data.macAddress}</div>
-          </div>
+          </div> */}
+
+          {/* Model */}
           <div className="space-y-2">
-            <div className="text-sm font-medium">Model</div>
-            <div className="text-sm">{data.model}</div>
+            <div className="text-sm font-medium text-muted-foreground">Model</div>
+            <div className="text-sm">Iridium Certus 9770</div>
           </div>
+
+          {/* Firmware Version */}
           <div className="space-y-2">
-            <div className="text-sm font-medium ">Firmware Version</div>
-            <div className="text-sm">{data.firmwareVersion}</div>
+            <div className="text-sm font-medium text-muted-foreground">Firmware Version</div>
+            {firmwareLoading ? (
+              <Skeleton className="h-6 w-32" />
+            ) : firmware?.version ? (
+              <Badge variant="default">{firmware.version}</Badge>
+            ) : (
+              <div className="text-sm text-destructive">Unavailable</div>
+            )}
           </div>
         </div>
       </CardContent>
